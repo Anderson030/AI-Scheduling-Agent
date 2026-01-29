@@ -1,0 +1,28 @@
+# Entorno
+.env
+*.env
+
+# Credenciales de Google (JSON)
+*.json
+!requirements.txt
+!package.json
+
+# Base de datos local
+*.db
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+build/
+dist/
+*.spec
+
+# Descargas temporales del bot (Audios)
+downloads/
+
+# IDEs
+.vscode/
+.idea/
