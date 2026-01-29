@@ -23,8 +23,10 @@ Herramientas disponibles:
 - delete_appointment: Para cancelar una cita.
 """
 
+
+#Define qué modelo usar.
 class AIService:
-    def __init__(self):
+    def __init__(self): 
         self.model = "gpt-4o"
 
     def transcribe_audio(self, audio_file_path):

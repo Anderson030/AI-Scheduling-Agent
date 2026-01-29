@@ -26,3 +26,4 @@ downloads/
 # IDEs
 .vscode/
 .idea/
+venv/
