@@ -11,6 +11,7 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 # Google Calendar
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON") # Para despliegue en Railway
 CALENDAR_ID = os.getenv("CALENDAR_ID", "primary")
 
 # Settings

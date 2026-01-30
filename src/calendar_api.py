@@ -1,19 +1,30 @@
 from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from src.config import GOOGLE_APPLICATION_CREDENTIALS, CALENDAR_ID, TIMEZONE_STR
 import pytz
 
 class CalendarService:
     def __init__(self):
         self.scopes = ['https://www.googleapis.com/auth/calendar']
-        self.creds = service_account.Credentials.from_service_account_file(
-            GOOGLE_APPLICATION_CREDENTIALS, scopes=self.scopes
-        )
+        from src.config import GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CREDENTIALS_JSON, CALENDAR_ID, TIMEZONE_STR
+        import json
+
+        if GOOGLE_CREDENTIALS_JSON:
+            # Cargar desde variable de entorno (JSON en texto)
+            creds_info = json.loads(GOOGLE_CREDENTIALS_JSON)
+            self.creds = service_account.Credentials.from_service_account_info(
+                creds_info, scopes=self.scopes
+            )
+        else:
+            # Cargar desde archivo local
+            self.creds = service_account.Credentials.from_service_account_file(
+                GOOGLE_APPLICATION_CREDENTIALS, scopes=self.scopes
+            )
+        
         self.service = build('calendar', 'v3', credentials=self.creds)
         self.timezone = TIMEZONE_STR
 
-    def create_event(self, summary, start_time: datetime, end_time: datetime = None, description=""):
+    def create_event(self, summary, start_time: datetime, end_time: datetime = None, description="", user_email=None):
         if not end_time:
             end_time = start_time + timedelta(hours=1)
         
@@ -30,7 +41,14 @@ class CalendarService:
             },
         }
 
-        event = self.service.events().insert(calendarId=CALENDAR_ID, body=event).execute()
+        if user_email:
+            event['attendees'] = [{'email': user_email}]
+
+        event = self.service.events().insert(
+            calendarId=CALENDAR_ID, 
+            body=event,
+            sendUpdates='all' # Envía invitación por correo automáticamente
+        ).execute()
         return event
 
     def list_events(self, time_min=None, max_results=10):

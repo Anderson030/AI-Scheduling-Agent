@@ -1,20 +1,27 @@
+from datetime import datetime
 import openai
-from src.config import OPENAI_API_KEY, TIMEZONE_STR
+from src.config import OPENAI_API_KEY, TIMEZONE_STR, TIMEZONE
 import json
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-SYSTEM_PROMPT = f"""
+def get_system_prompt():
+    now_local = datetime.now(TIMEZONE)
+    
+    return f"""
 Eres un asistente experto en gestión de citas para un consultorio. 
 Tu única función es ayudar al usuario a agendar, reprogramar, consultar y cancelar citas.
 No respondas preguntas generales que no tengan que ver con citas.
 
 REGLAS CRÍTICAS:
 1. La zona horaria actual es {TIMEZONE_STR}.
-2. Si el usuario no especifica la duración, asume 1 hora.
-3. Si falta información (como la hora o el motivo), pídela amablemente.
-4. Siempre confirma los detalles antes de ejecutar una acción si hay ambigüedad.
-5. Habla de forma profesional y amable en español.
+2. La fecha y hora actual es: {now_local.strftime('%A, %d de %B de %Y, %I:%M %p')}.
+3. Si el usuario no especifica la duración, asume 1 hora.
+4. Si falta información (como la hora o el motivo), pídela amablemente.
+5. **IMPORTANTE: Siempre pide el correo electrónico del usuario antes de agendar una cita.** Explícale que es para enviarle la invitación oficial de Google Calendar.
+6. Siempre confirma los detalles (incluyendo el correo) antes de ejecutar la acción.
+7. Habla de forma profesional y amable en español.
+8. No listas citas pasadas como pendientes a menos que se pida el historial.
 
 Herramientas disponibles:
 - create_appointment: Para agendar nuevas citas.
@@ -40,7 +47,7 @@ class AIService:
     def get_agent_response(self, messages, tools):
         response = client.chat.completions.create(
             model=self.model,
-            messages=[{"role": "system", "content": SYSTEM_PROMPT}] + messages,
+            messages=[{"role": "system", "content": get_system_prompt()}] + messages,
             tools=tools,
             tool_choice="auto"
         )
@@ -59,8 +66,9 @@ TOOLS = [
                     "summary": {"type": "string", "description": "Resumen o motivo de la cita"},
                     "start_time": {"type": "string", "description": "Fecha y hora de inicio en formato ISO 8601"},
                     "end_time": {"type": "string", "description": "Fecha y hora de fin en formato ISO 8601 (opcional)"},
+                    "user_email": {"type": "string", "description": "Correo electrónico del usuario para enviar la invitación"},
                 },
-                "required": ["summary", "start_time"]
+                "required": ["summary", "start_time", "user_email"]
             }
         }
     },
