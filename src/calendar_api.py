@@ -22,63 +22,82 @@ class CalendarService:
         self.timezone = TIMEZONE_STR
 
     def create_event(self, summary, start_time: datetime, end_time: datetime = None, description="", user_email=None):
-        if not end_time:
-            end_time = start_time + timedelta(hours=1)
-        
-        event = {
-            'summary': summary,
-            'description': description,
-            'start': {
-                'dateTime': start_time.isoformat(),
-                'timeZone': self.timezone,
-            },
-            'end': {
-                'dateTime': end_time.isoformat(),
-                'timeZone': self.timezone,
-            },
-        }
+        try:
+            if not end_time:
+                end_time = start_time + timedelta(hours=1)
+            
+            event = {
+                'summary': summary,
+                'description': description,
+                'start': {
+                    'dateTime': start_time.isoformat(),
+                    'timeZone': self.timezone,
+                },
+                'end': {
+                    'dateTime': end_time.isoformat(),
+                    'timeZone': self.timezone,
+                },
+            }
 
-        if user_email:
-            event['attendees'] = [{'email': user_email}]
+            if user_email:
+                event['attendees'] = [{'email': user_email}]
 
-        event = self.service.events().insert(
-            calendarId=self.calendar_id, 
-            body=event,
-            sendUpdates='all' # Envía invitación por correo automáticamente
-        ).execute()
-        return event
+            logger.info(f"Insertando evento en calendario {self.calendar_id}: {summary}")
+            event = self.service.events().insert(
+                calendarId=self.calendar_id, 
+                body=event,
+                sendUpdates='all' 
+            ).execute()
+            return event
+        except Exception as e:
+            logger.error(f"Error en create_event: {e}")
+            raise e
 
     def list_events(self, time_min=None, max_results=10):
-        if not time_min:
-            time_min = datetime.utcnow().isoformat() + 'Z'
-        
-        events_result = self.service.events().list(
-            calendarId=self.calendar_id, timeMin=time_min,
-            maxResults=max_results, singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-        return events_result.get('items', [])
+        try:
+            if not time_min:
+                time_min = datetime.utcnow().isoformat() + 'Z'
+            
+            logger.info(f"Listando eventos en calendario {self.calendar_id} desde {time_min}")
+            events_result = self.service.events().list(
+                calendarId=self.calendar_id, timeMin=time_min,
+                maxResults=max_results, singleEvents=True,
+                orderBy='startTime'
+            ).execute()
+            return events_result.get('items', [])
+        except Exception as e:
+            logger.error(f"Error en list_events: {e}")
+            raise e
 
     def update_event(self, event_id, summary=None, start_time=None, end_time=None):
-        event = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
-        
-        if summary:
-            event['summary'] = summary
-        if start_time:
-            event['start']['dateTime'] = start_time.isoformat()
-        if end_time:
-            event['end']['dateTime'] = end_time.isoformat()
-        elif start_time and not end_time:
-            # Assume 1 hour if only start time is updated
-            new_end = start_time + timedelta(hours=1)
-            event['end']['dateTime'] = new_end.isoformat()
+        try:
+            event = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
+            
+            if summary:
+                event['summary'] = summary
+            if start_time:
+                event['start']['dateTime'] = start_time.isoformat()
+            if end_time:
+                event['end']['dateTime'] = end_time.isoformat()
+            elif start_time and not end_time:
+                new_end = start_time + timedelta(hours=1)
+                event['end']['dateTime'] = new_end.isoformat()
 
-        updated_event = self.service.events().update(calendarId=self.calendar_id, eventId=event_id, body=event).execute()
-        return updated_event
+            logger.info(f"Actualizando evento {event_id} en calendario {self.calendar_id}")
+            updated_event = self.service.events().update(calendarId=self.calendar_id, eventId=event_id, body=event).execute()
+            return updated_event
+        except Exception as e:
+            logger.error(f"Error en update_event: {e}")
+            raise e
 
     def delete_event(self, event_id):
-        self.service.events().delete(calendarId=self.calendar_id, eventId=event_id).execute()
-        return True
+        try:
+            logger.info(f"Eliminando evento {event_id} en calendario {self.calendar_id}")
+            self.service.events().delete(calendarId=self.calendar_id, eventId=event_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error en delete_event: {e}")
+            raise e
 
     def check_conflicts(self, start_time: datetime, end_time: datetime):
         events = self.list_events(time_min=start_time.isoformat() + 'Z')

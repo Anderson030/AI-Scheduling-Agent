@@ -8,6 +8,8 @@ from src.database import SessionLocal, Appointment, UserAuth
 from datetime import datetime, timedelta
 import os
 from google.oauth2.credentials import Credentials
+import traceback
+from google.auth.transport.requests import Request
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +22,9 @@ class TelegramBot:
     def get_calendar_service(self, user_id):
         db = SessionLocal()
         user_auth = db.query(UserAuth).filter(UserAuth.telegram_id == user_id).first()
-        db.close()
         
         if not user_auth:
+            db.close()
             return None
             
         creds = Credentials(
@@ -33,6 +35,22 @@ class TelegramBot:
             client_secret=user_auth.client_secret,
             scopes=user_auth.scopes.split(",")
         )
+        
+        # Refrescar token si ha expirado
+        if creds.expired and creds.refresh_token:
+            try:
+                logger.info(f"Refrescando token expirado para {user_id}")
+                creds.refresh(Request())
+                user_auth.access_token = creds.token
+                # Si Credentials.expiry es offset-naive o aware, nos aseguramos de que coincida con la DB
+                # SQLAlchemy suele esperar naive UTC si así se definió
+                user_auth.expires_at = creds.expiry.replace(tzinfo=None) if creds.expiry else None
+                db.commit()
+                logger.info(f"Token refrescado exitosamente para {user_id}")
+            except Exception as e:
+                logger.error(f"Error al refrescar token para {user_id}: {e}")
+        
+        db.close()
         return CalendarService(credentials=creds)
 
     async def start_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,10 +111,10 @@ class TelegramBot:
             response_msg = self.ai.get_agent_response(messages, TOOLS)
             logger.info(f"IA respondió para {user_id}")
             
-            # Añadir la respuesta del asistente (que puede contener tool_calls) al historial
-            # Es CRÍTICO que el mensaje del assistant esté antes de los resultados de las herramientas
-            messages.append(response_msg)
-
+            # Añadir la respuesta del asistente al historial convirtiéndola a dict
+            assistant_msg_dict = response_msg.model_dump() if hasattr(response_msg, 'model_dump') else response_msg
+            messages.append(assistant_msg_dict)
+            
             # Procesar Tool Calls
             if response_msg.tool_calls:
                 logger.info(f"IA solicitó {len(response_msg.tool_calls)} herramientas para {user_id}")
@@ -112,6 +130,7 @@ class TelegramBot:
                         result = {"status": "error", "message": "No se encontró conexión con Google Calendar. Usa /conectar."}
                     else:
                         result = await self.execute_tool(function_name, args, user_id, calendar_service)
+                        logger.info(f"Resultado de {function_name}: {result}")
                     
                     messages.append({
                         "role": "tool",
@@ -127,23 +146,21 @@ class TelegramBot:
                 messages.append({"role": "assistant", "content": reply_text})
             else:
                 reply_text = response_msg.content
-                # El mensaje ya se añadió arriba (línea 61 aproximadamente en el archivo original)
-                # No es necesario añadirlo de nuevo si no hubo tool calls
 
-            # Limitar historial de forma segura (manteniendo pares assistant-tool si es necesario)
-            # Para simplificar, limitamos a 15 y nos aseguramos de no empezar con una herramienta
+            # Limitar historial de forma segura
             if len(messages) > 15:
                 messages = messages[-15:]
-                # Si el primer mensaje es de rol 'tool', lo quitamos para evitar errores de OpenAI
-                while messages and messages[0].get('role') == 'tool':
+                # Ahora sí podemos usar .get() porque todo son dicts
+                while messages and isinstance(messages[0], dict) and messages[0].get('role') == 'tool':
                     messages.pop(0)
 
             self.user_sessions[user_id] = messages
             
-            logger.info(f"Enviando respuesta a {user_id}: {reply_text[:50]}...")
-            await update.message.reply_text(reply_text)
+            logger.info(f"Enviando respuesta a {user_id}: {reply_text[:50] if reply_text else 'None'}...")
+            await update.message.reply_text(reply_text or "No recibí una respuesta clara de la IA, pero el proceso terminó.")
         except Exception as e:
-            logger.error(f"Error crítico en message_handler: {e}", exc_info=True)
+            logger.error(f"Error crítico en message_handler: {e}")
+            logger.error(traceback.format_exc())
             await update.message.reply_text("Lo siento, tuve un problema interno al procesar tu mensaje.")
 
     async def execute_tool(self, name, args, telegram_id, calendar_service):

@@ -193,9 +193,6 @@ async def auth_callback(request: Request):
     except Exception as e:
         logger.error(f"Error crítico en auth_callback: {e}", exc_info=True)
         return {"status": "error", "message": f"Ocurrió un error interno: {str(e)}"}
-    except Exception as e:
-        logger.error(f"Error crítico en auth_callback: {e}", exc_info=True)
-        return {"status": "error", "message": f"Ocurrió un error interno: {str(e)}"}
 
 @app.get("/")
 def health_check():
