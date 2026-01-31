@@ -8,7 +8,13 @@ import os
 # Para producción, cambiar a PostgreSQL cuando se resuelva el problema de encoding
 USE_SQLITE = os.getenv("USE_SQLITE", "true").lower() == "true"
 
-if USE_SQLITE:
+# Configuración de base de datos
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if USE_SQLITE or not DATABASE_URL:
+    if not DATABASE_URL and not USE_SQLITE:
+        print("Warning: DATABASE_URL not found, falling back to SQLite.")
+    
     DATABASE_URL = "sqlite:///./scheduling_agent.db"
     engine = create_engine(
         DATABASE_URL,
@@ -16,16 +22,12 @@ if USE_SQLITE:
         pool_pre_ping=True
     )
 else:
-    # PostgreSQL (tiene problemas de encoding en Windows con caracteres especiales)
-    DB_USER = os.getenv("DB_USER", "scheduling_user")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "secure_password_123")
-    DB_HOST = os.getenv("DB_HOST", "localhost")
-    DB_PORT = os.getenv("DB_PORT", "5432")
-    DB_NAME = os.getenv("DB_NAME", "scheduling_db")
-    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    # Soporte para Railway (cambia postgres:// a postgresql:// si es necesario)
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    
     engine = create_engine(
         DATABASE_URL,
-        connect_args={'client_encoding': 'utf8'},
         pool_pre_ping=True
     )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
