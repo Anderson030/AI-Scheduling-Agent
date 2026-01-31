@@ -118,32 +118,49 @@ async def get_auth_url(telegram_id: str):
 async def auth_callback(request: Request):
     """Recibe el código de Google, obtiene los tokens y los guarda para el usuario"""
     try:
+        import requests
         code = request.query_params.get("code")
         telegram_id = request.query_params.get("state")
         
-        rid = f"{WEBHOOK_URL}/auth/callback"
-        logger.info(f"Callback recibido. State/TelegramID: {telegram_id}")
-        logger.info(f"Intentando canje con Redirect URI: {rid}")
-        logger.info(f"Client Secret empieza por: {str(GOOGLE_CLIENT_SECRET)[:5]}...")
+        redirect_uri = f"{WEBHOOK_URL}/auth/callback"
+        logger.info(f"Callback recibido. TelegramID: {telegram_id}")
+        logger.info(f"Redirect URI configurada: {redirect_uri}")
         
         if not code or not telegram_id:
-            logger.error(f"Callback inválido: code={code}, state={telegram_id}")
-            return {"status": "error", "message": "Faltan parámetros en el callback."}
+            return {"status": "error", "message": "Faltan parámetros."}
 
-        flow = google_auth_oauthlib.flow.Flow.from_client_config(
-            {
-                "web": {
-                    "client_id": GOOGLE_CLIENT_ID,
-                    "client_secret": GOOGLE_CLIENT_SECRET,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
+        # Intercambio manual para ver el error real de Google
+        token_url = "https://oauth2.googleapis.com/token"
+        payload = {
+            'code': code,
+            'client_id': GOOGLE_CLIENT_ID,
+            'client_secret': GOOGLE_CLIENT_SECRET,
+            'redirect_uri': redirect_uri,
+            'grant_type': 'authorization_code'
+        }
+        
+        logger.info(f"Enviando petición a Google Token URL con ClientID: {GOOGLE_CLIENT_ID[:15]}...")
+        response = requests.post(token_url, data=payload)
+        tokens = response.json()
+
+        if response.status_code != 200:
+            logger.error(f"Error en intercambio de tokens: {tokens}")
+            return {
+                "status": "error", 
+                "message": f"Google rechazó las credenciales (invalid_client). Detalle: {tokens.get('error_description', tokens.get('error'))}",
+                "debug_info": {
+                    "sent_redirect_uri": redirect_uri,
+                    "google_response": tokens
                 }
-            },
-            scopes=['https://www.googleapis.com/auth/calendar']
-        )
-        flow.redirect_uri = f"{WEBHOOK_URL}/auth/callback"
-        flow.fetch_token(code=code)
-        creds = flow.credentials
+            }
+
+        access_token = tokens.get('access_token')
+        refresh_token = tokens.get('refresh_token')
+        expires_in = tokens.get('expires_in', 3600)
+        
+        # Calcular fecha expiración
+        from datetime import timedelta
+        expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
 
         # Guardar en DB
         db = SessionLocal()
@@ -153,24 +170,29 @@ async def auth_callback(request: Request):
                 user_auth = UserAuth(telegram_id=telegram_id)
                 db.add(user_auth)
             
-            user_auth.access_token = creds.token
-            user_auth.refresh_token = creds.refresh_token
-            user_auth.token_uri = creds.token_uri
-            user_auth.client_id = creds.client_id
-            user_auth.client_secret = creds.client_secret
-            user_auth.scopes = ",".join(creds.scopes)
-            user_auth.expires_at = creds.expiry
+            user_auth.access_token = access_token
+            if refresh_token: # Solo viene la primera vez o si forzamos consent
+                user_auth.refresh_token = refresh_token
+            
+            user_auth.token_uri = token_url
+            user_auth.client_id = GOOGLE_CLIENT_ID
+            user_auth.client_secret = GOOGLE_CLIENT_SECRET
+            user_auth.scopes = tokens.get('scope', 'https://www.googleapis.com/auth/calendar')
+            user_auth.expires_at = expires_at
 
             db.commit()
             logger.info(f"Tokens guardados exitosamente para usuario {telegram_id}")
         except Exception as db_e:
             db.rollback()
-            logger.error(f"Error al guardar en base de datos: {db_e}")
+            logger.error(f"Error DB: {db_e}")
             raise db_e
         finally:
             db.close()
 
         return {"status": "success", "message": "¡Tu calendario ha sido conectado con éxito! Ya puedes volver a Telegram."}
+    except Exception as e:
+        logger.error(f"Error crítico en auth_callback: {e}", exc_info=True)
+        return {"status": "error", "message": f"Ocurrió un error interno: {str(e)}"}
     except Exception as e:
         logger.error(f"Error crítico en auth_callback: {e}", exc_info=True)
         return {"status": "error", "message": f"Ocurrió un error interno: {str(e)}"}
