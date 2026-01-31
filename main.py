@@ -71,6 +71,9 @@ async def webhook_handler(request: Request):
 @app.get("/auth/url")
 async def get_auth_url(telegram_id: str):
     """Genera la URL de autorización para un usuario de Telegram específico"""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        return {"error": "GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET no están configurados en Railway"}
+        
     flow = google_auth_oauthlib.flow.Flow.from_client_config(
         {
             "web": {
@@ -85,6 +88,7 @@ async def get_auth_url(telegram_id: str):
     flow.redirect_uri = f"{WEBHOOK_URL}/auth/callback"
     authorization_url, state = flow.authorization_url(
         access_type='offline',
+        prompt='consent',  # Forzar a que Google entregue un Refresh Token siempre
         include_granted_scopes='true',
         state=telegram_id
     )
@@ -93,43 +97,58 @@ async def get_auth_url(telegram_id: str):
 @app.get("/auth/callback")
 async def auth_callback(request: Request):
     """Recibe el código de Google, obtiene los tokens y los guarda para el usuario"""
-    code = request.query_params.get("code")
-    telegram_id = request.query_params.get("state")
-    
-    flow = google_auth_oauthlib.flow.Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-        },
-        scopes=['https://www.googleapis.com/auth/calendar']
-    )
-    flow.redirect_uri = f"{WEBHOOK_URL}/auth/callback"
-    flow.fetch_token(code=code)
-    creds = flow.credentials
+    try:
+        code = request.query_params.get("code")
+        telegram_id = request.query_params.get("state")
+        
+        if not code or not telegram_id:
+            logger.error(f"Callback inválido: code={code}, state={telegram_id}")
+            return {"status": "error", "message": "Faltan parámetros en el callback."}
 
-    # Guardar en DB
-    db = SessionLocal()
-    user_auth = db.query(UserAuth).filter(UserAuth.telegram_id == telegram_id).first()
-    if not user_auth:
-        user_auth = UserAuth(telegram_id=telegram_id)
-        db.add(user_auth)
-    
-    user_auth.access_token = creds.token
-    user_auth.refresh_token = creds.refresh_token
-    user_auth.token_uri = creds.token_uri
-    user_auth.client_id = creds.client_id
-    user_auth.client_secret = creds.client_secret
-    user_auth.scopes = ",".join(creds.scopes)
-    user_auth.expires_at = creds.expiry
+        flow = google_auth_oauthlib.flow.Flow.from_client_config(
+            {
+                "web": {
+                    "client_id": GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                }
+            },
+            scopes=['https://www.googleapis.com/auth/calendar']
+        )
+        flow.redirect_uri = f"{WEBHOOK_URL}/auth/callback"
+        flow.fetch_token(code=code)
+        creds = flow.credentials
 
-    db.commit()
-    db.close()
+        # Guardar en DB
+        db = SessionLocal()
+        try:
+            user_auth = db.query(UserAuth).filter(UserAuth.telegram_id == telegram_id).first()
+            if not user_auth:
+                user_auth = UserAuth(telegram_id=telegram_id)
+                db.add(user_auth)
+            
+            user_auth.access_token = creds.token
+            user_auth.refresh_token = creds.refresh_token
+            user_auth.token_uri = creds.token_uri
+            user_auth.client_id = creds.client_id
+            user_auth.client_secret = creds.client_secret
+            user_auth.scopes = ",".join(creds.scopes)
+            user_auth.expires_at = creds.expiry
 
-    return {"status": "success", "message": "¡Tu calendario ha sido conectado con éxito! Ya puedes volver a Telegram."}
+            db.commit()
+            logger.info(f"Tokens guardados exitosamente para usuario {telegram_id}")
+        except Exception as db_e:
+            db.rollback()
+            logger.error(f"Error al guardar en base de datos: {db_e}")
+            raise db_e
+        finally:
+            db.close()
+
+        return {"status": "success", "message": "¡Tu calendario ha sido conectado con éxito! Ya puedes volver a Telegram."}
+    except Exception as e:
+        logger.error(f"Error crítico en auth_callback: {e}", exc_info=True)
+        return {"status": "error", "message": f"Ocurrió un error interno: {str(e)}"}
 
 @app.get("/")
 def health_check():
