@@ -12,10 +12,16 @@ import google_auth_oauthlib.flow
 from fastapi.responses import RedirectResponse
 from datetime import datetime
 
-# Normalizar variables (quitar espacios o slashes accidentales)
+# Normalizar variables (quitar espacios, comillas o slashes accidentales)
 WEBHOOK_URL = RAW_WEBHOOK_URL.rstrip('/') if RAW_WEBHOOK_URL else None
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID").strip() if os.getenv("GOOGLE_CLIENT_ID") else None
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET").strip() if os.getenv("GOOGLE_CLIENT_SECRET") else None
+
+def clean_env_var(val):
+    if not val: return None
+    # Quitar espacios, comillas simples y dobles que a veces se cuelan al copiar
+    return val.strip().strip('"').strip("'")
+
+GOOGLE_CLIENT_ID = clean_env_var(os.getenv("GOOGLE_CLIENT_ID"))
+GOOGLE_CLIENT_SECRET = clean_env_var(os.getenv("GOOGLE_CLIENT_SECRET"))
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -105,6 +111,8 @@ async def auth_callback(request: Request):
     try:
         code = request.query_params.get("code")
         telegram_id = request.query_params.get("state")
+        
+        logger.info(f"Callback recibido. ID Cliente empieza por: {str(GOOGLE_CLIENT_ID)[:10]}...")
         
         if not code or not telegram_id:
             logger.error(f"Callback inválido: code={code}, state={telegram_id}")
