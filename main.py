@@ -12,8 +12,10 @@ import google_auth_oauthlib.flow
 from fastapi.responses import RedirectResponse
 from datetime import datetime
 
-# Normalizar WEBHOOK_URL (quitar slash final si existe)
+# Normalizar variables (quitar espacios o slashes accidentales)
 WEBHOOK_URL = RAW_WEBHOOK_URL.rstrip('/') if RAW_WEBHOOK_URL else None
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID").strip() if os.getenv("GOOGLE_CLIENT_ID") else None
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET").strip() if os.getenv("GOOGLE_CLIENT_SECRET") else None
 
 # Logging
 logging.basicConfig(level=logging.INFO)
