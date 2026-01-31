@@ -4,13 +4,16 @@ import uvicorn
 from fastapi import FastAPI, Request, BackgroundTasks
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
-from src.config import TELEGRAM_BOT_TOKEN, WEBHOOK_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+from src.config import TELEGRAM_BOT_TOKEN, WEBHOOK_URL as RAW_WEBHOOK_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 from src.bot import TelegramBot
 from src.database import init_db, SessionLocal, UserAuth
 from src.scheduler import SchedulerService
 import google_auth_oauthlib.flow
 from fastapi.responses import RedirectResponse
 from datetime import datetime
+
+# Normalizar WEBHOOK_URL (quitar slash final si existe)
+WEBHOOK_URL = RAW_WEBHOOK_URL.rstrip('/') if RAW_WEBHOOK_URL else None
 
 # Logging
 logging.basicConfig(level=logging.INFO)
