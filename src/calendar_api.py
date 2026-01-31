@@ -1,27 +1,19 @@
 from datetime import datetime, timedelta
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 import pytz
 
 class CalendarService:
-    def __init__(self):
+    def __init__(self, credentials=None):
         self.scopes = ['https://www.googleapis.com/auth/calendar']
-        from src.config import GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CREDENTIALS_JSON, CALENDAR_ID, TIMEZONE_STR
-        import json
-
-        if GOOGLE_CREDENTIALS_JSON:
-            # Cargar desde variable de entorno (JSON en texto)
-            creds_info = json.loads(GOOGLE_CREDENTIALS_JSON)
-            self.creds = service_account.Credentials.from_service_account_info(
-                creds_info, scopes=self.scopes
-            )
-        else:
-            # Cargar desde archivo local
-            self.creds = service_account.Credentials.from_service_account_file(
-                GOOGLE_APPLICATION_CREDENTIALS, scopes=self.scopes
-            )
+        from src.config import TIMEZONE_STR
         
-        self.service = build('calendar', 'v3', credentials=self.creds)
+        self.creds = credentials
+        if self.creds:
+            self.service = build('calendar', 'v3', credentials=self.creds)
+        else:
+            self.service = None
+        
         self.timezone = TIMEZONE_STR
 
     def create_event(self, summary, start_time: datetime, end_time: datetime = None, description="", user_email=None):

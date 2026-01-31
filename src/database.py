@@ -48,6 +48,20 @@ class Appointment(Base):
     rem_15m_sent = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+class UserAuth(Base):
+    __tablename__ = "user_auth"
+
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(String, unique=True, index=True)
+    access_token = Column(String)
+    refresh_token = Column(String)
+    token_uri = Column(String)
+    client_id = Column(String)
+    client_secret = Column(String)
+    scopes = Column(String)
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
