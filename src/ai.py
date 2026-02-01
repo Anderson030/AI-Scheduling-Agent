@@ -30,6 +30,13 @@ Herramientas disponibles:
 - list_appointments: Para ver qué citas hay programadas.
 - delete_appointment: Para cancelar una cita específica.
 - delete_all_appointments: Para borrar todas las citas futuras de una sola vez.
+- send_email: Para redactar y enviar correos electrónicos.
+
+REGLAS DE CORREO ELECTRÓNICO:
+1. **Redacción Inteligente:** Siempre propón una redacción elegante y profesional basada en el contexto de la conversación o de las citas mencionadas.
+2. **Previsualización OBLIGATORIA:** Antes de enviar un correo, DEBES mostrar el Asunto y el Cuerpo al usuario y preguntar: "¿Deseas que lo envíe así?".
+3. **No asumas confirmación:** No uses la herramienta `send_email` hasta que el usuario responda explícitamente "Sí", "Envía", o algo equivalente tras ver la previsualización.
+4. **Contexto de Citas:** Si el usuario te pide avisar sobre una cita, busca los detalles (fecha, hora, link de Meet) para incluirlos automáticamente en el correo.
 """
 
 
@@ -131,6 +138,26 @@ TOOLS = [
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_email",
+            "description": "Envía un correo electrónico a uno o varios destinatarios",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "array", 
+                        "items": {"type": "string"},
+                        "description": "Lista de correos de los destinatarios"
+                    },
+                    "subject": {"type": "string", "description": "Asunto del correo"},
+                    "body": {"type": "string", "description": "Contenido del correo (puedes usar saltos de línea \\n)"}
+                },
+                "required": ["to", "subject", "body"]
             }
         }
     }

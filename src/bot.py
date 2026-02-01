@@ -81,13 +81,18 @@ class TelegramBot:
             reply_text = response_msg.content
             if response_msg.tool_calls:
                 logger.info(f"IA solicitó {len(response_msg.tool_calls)} herramientas para {user_id}")
-                calendar_service = AuthManager.get_calendar_service(user_id)
+                
+                # Obtener servicios necesarios
+                services = {
+                    "calendar": AuthManager.get_calendar_service(user_id),
+                    "gmail": AuthManager.get_gmail_service(user_id)
+                }
                 
                 for tool_call in response_msg.tool_calls:
                     function_name = tool_call.function.name
                     args = json.loads(tool_call.function.arguments)
                     
-                    result = await ToolExecutor.execute(function_name, args, user_id, calendar_service)
+                    result = await ToolExecutor.execute(function_name, args, user_id, services)
                     
                     HistoryManager.save_message(user_id, "tool", json.dumps(result), 
                                               tool_call_id=tool_call.id, name=function_name)

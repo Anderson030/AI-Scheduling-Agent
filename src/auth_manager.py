@@ -3,20 +3,20 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from src.database import SessionLocal, UserAuth
 from src.calendar_api import CalendarService
+from src.gmail_api import GmailService
 
 logger = logging.getLogger(__name__)
 
 class AuthManager:
     @staticmethod
-    def get_calendar_service(user_id: str):
-        """Obtiene y refresca el servicio de calendario para un usuario específico"""
+    def _get_credentials(user_id: str):
+        """Método interno para obtener y refrescar credenciales"""
         db = SessionLocal()
         try:
             user_auth = db.query(UserAuth).filter(UserAuth.telegram_id == user_id).first()
-            
             if not user_auth:
-                return None
-                
+                return None, None
+
             creds = Credentials(
                 token=user_auth.access_token,
                 refresh_token=user_auth.refresh_token,
@@ -25,8 +25,7 @@ class AuthManager:
                 client_secret=user_auth.client_secret,
                 scopes=user_auth.scopes.split(",")
             )
-            
-            # Refrescar token si ha expirado
+
             if creds.expired and creds.refresh_token:
                 try:
                     logger.info(f"Refrescando token para usuario {user_id}")
@@ -37,9 +36,24 @@ class AuthManager:
                 except Exception as e:
                     logger.error(f"Error al refrescar token de Google: {e}")
             
-            return CalendarService(credentials=creds)
-        finally:
+            return creds, db
+        except Exception as e:
             db.close()
+            raise e
+
+    @staticmethod
+    def get_calendar_service(user_id: str):
+        """Obtiene el servicio de calendario"""
+        creds, db = AuthManager._get_credentials(user_id)
+        if db: db.close()
+        return CalendarService(credentials=creds) if creds else None
+
+    @staticmethod
+    def get_gmail_service(user_id: str):
+        """Obtiene el servicio de Gmail"""
+        creds, db = AuthManager._get_credentials(user_id)
+        if db: db.close()
+        return GmailService(credentials=creds) if creds else None
 
     @staticmethod
     def is_user_authenticated(user_id: str) -> bool:

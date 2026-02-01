@@ -8,9 +8,12 @@ logger = logging.getLogger(__name__)
 
 class ToolExecutor:
     @staticmethod
-    async def execute(name, args, telegram_id, calendar_service: CalendarService):
+    async def execute(name, args, telegram_id, services: dict):
         """Ejecuta la lógica de una herramienta específica recibida de la IA"""
         try:
+            calendar_service = services.get("calendar")
+            gmail_service = services.get("gmail")
+
             if name == "create_appointment":
                 return await ToolExecutor._create_appointment(args, telegram_id, calendar_service)
             elif name == "list_appointments":
@@ -21,6 +24,8 @@ class ToolExecutor:
                 return await ToolExecutor._delete_appointment(args, calendar_service)
             elif name == "delete_all_appointments":
                 return await ToolExecutor._delete_all_appointments(calendar_service, telegram_id)
+            elif name == "send_email":
+                return await ToolExecutor._send_email(args, gmail_service)
             
             return {"status": "error", "message": f"Herramienta '{name}' no reconocida."}
         except Exception as e:
@@ -150,4 +155,23 @@ class ToolExecutor:
             return {"status": "success", "message": f"Se han eliminado {count} citas correctamente."}
         except Exception as e:
             logger.error(f"Error en _delete_all_appointments: {e}")
+            return {"status": "error", "message": str(e)}
+
+    @staticmethod
+    async def _send_email(args, gmail_service):
+        try:
+            to_list = args.get('to')
+            if isinstance(to_list, list):
+                to_str = ", ".join(to_list)
+            else:
+                to_str = str(to_list)
+
+            gmail_service.send_email(
+                to=to_str,
+                subject=args['subject'],
+                body=args['body']
+            )
+            return {"status": "success", "message": f"Correo enviado a {to_str}"}
+        except Exception as e:
+            logger.error(f"Error en _send_email: {e}")
             return {"status": "error", "message": str(e)}

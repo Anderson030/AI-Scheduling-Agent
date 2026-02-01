@@ -104,7 +104,10 @@ async def get_auth_url(telegram_id: str):
                 "token_uri": "https://oauth2.googleapis.com/token",
             }
         },
-        scopes=['https://www.googleapis.com/auth/calendar']
+        scopes=[
+            'https://www.googleapis.com/auth/calendar',
+            'https://www.googleapis.com/auth/gmail.send'
+        ]
     )
     flow.redirect_uri = f"{WEBHOOK_URL}/auth/callback"
     authorization_url, state = flow.authorization_url(
@@ -178,7 +181,7 @@ async def auth_callback(request: Request):
             user_auth.token_uri = token_url
             user_auth.client_id = GOOGLE_CLIENT_ID
             user_auth.client_secret = GOOGLE_CLIENT_SECRET
-            user_auth.scopes = tokens.get('scope', 'https://www.googleapis.com/auth/calendar')
+            user_auth.scopes = tokens.get('scope', 'https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/gmail.send')
             user_auth.expires_at = expires_at
 
             db.commit()
