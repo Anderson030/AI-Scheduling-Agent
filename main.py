@@ -54,6 +54,7 @@ async def startup_event():
     # Registrar manejadores del bot
     application.add_handler(CommandHandler("start", bot_logic.start_handler))
     application.add_handler(CommandHandler("conectar", bot_logic.conectar_handler))
+    application.add_handler(CommandHandler("reset", bot_logic.reset_handler))
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.AUDIO, bot_logic.message_handler))
     
     await application.initialize()
