@@ -23,7 +23,7 @@ class AuthManager:
                 token_uri=user_auth.token_uri,
                 client_id=user_auth.client_id,
                 client_secret=user_auth.client_secret,
-                scopes=user_auth.scopes.split(",")
+                scopes=user_auth.scopes.replace(",", " ").split()
             )
 
             if creds.expired and creds.refresh_token:
