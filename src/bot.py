@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from src.ai import AIService, TOOLS
 from src.calendar_api import CalendarService
-from src.database import SessionLocal, Appointment, UserAuth
+from src.database import SessionLocal, Appointment, UserAuth, ConversationHistory
 from datetime import datetime, timedelta
 import os
 from google.oauth2.credentials import Credentials
@@ -17,7 +17,6 @@ class TelegramBot:
     def __init__(self, token):
         self.token = token
         self.ai = AIService()
-        self.user_sessions = {} # {telegram_id: [messages]}
 
     def get_calendar_service(self, user_id):
         db = SessionLocal()
@@ -42,8 +41,6 @@ class TelegramBot:
                 logger.info(f"Refrescando token expirado para {user_id}")
                 creds.refresh(Request())
                 user_auth.access_token = creds.token
-                # Si Credentials.expiry es offset-naive o aware, nos aseguramos de que coincida con la DB
-                # SQLAlchemy suele esperar naive UTC si así se definió
                 user_auth.expires_at = creds.expiry.replace(tzinfo=None) if creds.expiry else None
                 db.commit()
                 logger.info(f"Token refrescado exitosamente para {user_id}")
@@ -77,9 +74,9 @@ class TelegramBot:
             # Verificar si el usuario tiene permiso (Auth)
             db = SessionLocal()
             user_auth = db.query(UserAuth).filter(UserAuth.telegram_id == user_id).first()
-            db.close()
             
             if not user_auth:
+                db.close()
                 await update.message.reply_text("Primero debes conectar tu cuenta de Google. Usa /conectar para obtener el link.")
                 return
 
@@ -99,12 +96,37 @@ class TelegramBot:
                 await update.message.reply_text(f"He escuchado: \"{text}\"")
 
             if not text:
+                db.close()
                 logger.warning(f"Mensaje vacío recibido de {user_id}")
                 return
 
-            # Obtener historial
-            messages = self.user_sessions.get(user_id, [])
+            # Obtener historial de la DB
+            messages = []
+            history_records = db.query(ConversationHistory).filter(ConversationHistory.telegram_id == user_id).order_by(ConversationHistory.created_at.asc()).all()
+            
+            for rec in history_records:
+                try:
+                    if rec.role == "assistant" and rec.content.startswith("{"):
+                        msg = json.loads(rec.content)
+                    else:
+                        msg = {"role": rec.role, "content": rec.content}
+                        if rec.role == "tool":
+                            msg["tool_call_id"] = rec.tool_call_id
+                            msg["name"] = rec.name
+                    messages.append(msg)
+                except:
+                    messages.append({"role": rec.role, "content": rec.content})
+
+            # Limitar historial (últimos 15 mensajes)
+            if len(messages) > 15:
+                messages = messages[-15:]
+                while messages and messages[0].get('role') == 'tool':
+                    messages.pop(0)
+
             messages.append({"role": "user", "content": text})
+            # Guardar user message
+            db.add(ConversationHistory(telegram_id=user_id, role="user", content=text))
+            db.commit()
 
             # Obtener respuesta de la IA
             logger.info(f"Solicitando respuesta de IA para {user_id}...")
@@ -115,6 +137,14 @@ class TelegramBot:
             assistant_msg_dict = response_msg.model_dump() if hasattr(response_msg, 'model_dump') else response_msg
             messages.append(assistant_msg_dict)
             
+            # Guardar assistant message
+            db.add(ConversationHistory(
+                telegram_id=user_id, 
+                role="assistant", 
+                content=json.dumps(assistant_msg_dict) if response_msg.tool_calls else response_msg.content
+            ))
+            db.commit()
+
             # Procesar Tool Calls
             if response_msg.tool_calls:
                 logger.info(f"IA solicitó {len(response_msg.tool_calls)} herramientas para {user_id}")
@@ -132,20 +162,36 @@ class TelegramBot:
                         result = await self.execute_tool(function_name, args, user_id, calendar_service)
                         logger.info(f"Resultado de {function_name}: {result}")
                     
-                    messages.append({
+                    tool_msg = {
                         "role": "tool",
                         "tool_call_id": tool_call.id,
                         "name": function_name,
                         "content": json.dumps(result)
-                    })
+                    }
+                    messages.append(tool_msg)
+                    
+                    # Guardar tool message
+                    db.add(ConversationHistory(
+                        telegram_id=user_id,
+                        role="tool",
+                        tool_call_id=tool_call.id,
+                        name=function_name,
+                        content=json.dumps(result)
+                    ))
+                    db.commit()
                 
                 # Segunda llamada a la IA con el resultado de la herramienta
                 logger.info(f"Solicitando respuesta final de IA tras herramientas para {user_id}...")
                 final_response = self.ai.get_agent_response(messages, TOOLS)
                 reply_text = final_response.content
+                
                 messages.append({"role": "assistant", "content": reply_text})
+                db.add(ConversationHistory(telegram_id=user_id, role="assistant", content=reply_text))
+                db.commit()
             else:
                 reply_text = response_msg.content
+
+            db.close()
 
             # Limitar historial de forma segura
             if len(messages) > 15:

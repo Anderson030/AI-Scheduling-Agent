@@ -62,6 +62,17 @@ class UserAuth(Base):
     expires_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+class ConversationHistory(Base):
+    __tablename__ = "conversation_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    telegram_id = Column(String, index=True)
+    role = Column(String) # user, assistant, tool
+    content = Column(String)
+    tool_call_id = Column(String, nullable=True)
+    name = Column(String, nullable=True) # for tool messages
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 
