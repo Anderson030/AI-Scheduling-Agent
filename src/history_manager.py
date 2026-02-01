@@ -30,10 +30,14 @@ class HistoryManager:
                     logger.error(f"Error parseando mensaje de historial: {e}")
                     messages.append({"role": rec.role, "content": rec.content})
 
-            # Truncado inteligente (evitar que empiece con 'tool')
+            # Truncado inteligente:
+            # Nunca debemos empezar con un mensaje de rol 'tool' o 'assistant' que tenga tool_calls incompleto.
+            # La forma más segura de truncar es asegurar que el primer mensaje sea de tipo 'user'.
             if len(messages) > limit:
+                # Nos quedamos con los últimos 'limit' mensajes
                 messages = messages[-limit:]
-                while messages and messages[0].get("role") == "tool":
+                # Seguimos eliminando desde el principio hasta que el primer mensaje sea 'user'
+                while messages and messages[0].get("role") != "user":
                     messages.pop(0)
             
             return messages

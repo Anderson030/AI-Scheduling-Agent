@@ -19,6 +19,8 @@ class ToolExecutor:
                 return await ToolExecutor._update_appointment(args, calendar_service)
             elif name == "delete_appointment":
                 return await ToolExecutor._delete_appointment(args, calendar_service)
+            elif name == "delete_all_appointments":
+                return await ToolExecutor._delete_all_appointments(calendar_service, telegram_id)
             
             return {"status": "error", "message": f"Herramienta '{name}' no reconocida."}
         except Exception as e:
@@ -114,7 +116,12 @@ class ToolExecutor:
 
     @staticmethod
     async def _delete_appointment(args, calendar_service):
-        calendar_service.delete_event(args['event_id'])
+        try:
+            calendar_service.delete_event(args['event_id'])
+        except Exception as e:
+            # Si falla en Google (excepto 404 manejado arriba), logueamos pero intentamos borrar en DB
+            logger.warning(f"Error borrando en Google (procediendo con DB): {e}")
+
         db = SessionLocal()
         try:
             db.query(Appointment).filter(Appointment.event_id == args['event_id']).delete()
@@ -122,3 +129,25 @@ class ToolExecutor:
         finally:
             db.close()
         return {"status": "success"}
+
+    @staticmethod
+    async def _delete_all_appointments(calendar_service, telegram_id):
+        try:
+            count = calendar_service.delete_all_events()
+            
+            # Limpiar DB localmente para este usuario (citas futuras)
+            db = SessionLocal()
+            try:
+                now_utc = datetime.utcnow()
+                db.query(Appointment).filter(
+                    Appointment.telegram_id == telegram_id,
+                    Appointment.start_time >= now_utc
+                ).delete()
+                db.commit()
+            finally:
+                db.close()
+            
+            return {"status": "success", "message": f"Se han eliminado {count} citas correctamente."}
+        except Exception as e:
+            logger.error(f"Error en _delete_all_appointments: {e}")
+            return {"status": "error", "message": str(e)}

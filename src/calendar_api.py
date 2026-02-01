@@ -119,7 +119,24 @@ class CalendarService:
             self.service.events().delete(calendarId=self.calendar_id, eventId=event_id).execute()
             return True
         except Exception as e:
+            # Si el código es 404 o 410, ya se borró, no es un error fatal
+            if "not found" in str(e).lower() or "gone" in str(e).lower():
+                logger.warning(f"Evento {event_id} no encontrado en Google Calendar (posiblemente ya borrado).")
+                return True
             logger.error(f"Error en delete_event: {e}")
+            raise e
+
+    def delete_all_events(self):
+        """Elimina todos los eventos futuros del calendario del usuario"""
+        try:
+            events = self.list_events() # list_events ya usa datetime.now(timezone.utc)
+            deleted_count = 0
+            for event in events:
+                self.delete_event(event['id'])
+                deleted_count += 1
+            return deleted_count
+        except Exception as e:
+            logger.error(f"Error en delete_all_events: {e}")
             raise e
 
     def check_conflicts(self, start_time: datetime, end_time: datetime):

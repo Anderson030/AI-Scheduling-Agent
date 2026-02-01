@@ -28,7 +28,8 @@ Herramientas disponibles:
 - create_appointment: Para agendar nuevas citas.
 - update_appointment: Para cambiar fecha, hora o título de una cita existente.
 - list_appointments: Para ver qué citas hay programadas.
-- delete_appointment: Para cancelar una cita.
+- delete_appointment: Para cancelar una cita específica.
+- delete_all_appointments: Para borrar todas las citas futuras de una sola vez.
 """
 
 
@@ -111,13 +112,25 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "delete_appointment",
-            "description": "Cancela o elimina una cita",
+            "description": "Cancela o elimina una cita específica",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "event_id": {"type": "string", "description": "ID del evento a eliminar"}
                 },
                 "required": ["event_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_all_appointments",
+            "description": "Elimina TODAS las citas futuras programadas del usuario",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
             }
         }
     }
