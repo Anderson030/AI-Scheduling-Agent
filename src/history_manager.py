@@ -17,18 +17,28 @@ class HistoryManager:
             messages = []
             for rec in records:
                 try:
-                    # Si el contenido empieza como JSON, es un mensaje de assistant con tool_calls
-                    if rec.role == "assistant" and rec.content.startswith("{"):
-                        msg = json.loads(rec.content)
+                    role = rec.role
+                    content = rec.content or ""
+                    
+                    if role == "assistant" and content.startswith("{"):
+                        msg = json.loads(content)
+                        # OpenAI requiere que 'content' sea string o null, 
+                        # pero a veces falla si es null explícito en el dict enviado.
+                        if msg.get("content") is None:
+                            msg["content"] = ""
                     else:
-                        msg = {"role": rec.role, "content": rec.content}
-                        if rec.role == "tool":
+                        msg = {"role": role, "content": content}
+                        if role == "tool":
                             msg["tool_call_id"] = rec.tool_call_id
                             msg["name"] = rec.name
+                    
+                    # Validación de seguridad: no agregar mensajes vacíos que rompan la API
+                    if not msg.get("content") and not msg.get("tool_calls") and role != "tool":
+                        continue
+                        
                     messages.append(msg)
                 except Exception as e:
                     logger.error(f"Error parseando mensaje de historial: {e}")
-                    messages.append({"role": rec.role, "content": rec.content})
 
             # Truncado inteligente:
             # Nunca debemos empezar con un mensaje de rol 'tool' o 'assistant' que tenga tool_calls incompleto.
@@ -50,7 +60,7 @@ class HistoryManager:
         db = SessionLocal()
         try:
             # Si el contenido es un dict (assistant message dump), lo serializamos
-            content_to_save = content
+            content_to_save = content or ""
             if isinstance(content, dict):
                 content_to_save = json.dumps(content)
                 
