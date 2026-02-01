@@ -1,0 +1,90 @@
+import logging
+import json
+from datetime import datetime, timedelta
+from src.database import SessionLocal, Appointment
+from src.calendar_api import CalendarService
+
+logger = logging.getLogger(__name__)
+
+class ToolExecutor:
+    @staticmethod
+    async def execute(name, args, telegram_id, calendar_service: CalendarService):
+        """Ejecuta la lógica de una herramienta específica recibida de la IA"""
+        try:
+            if name == "create_appointment":
+                return await ToolExecutor._create_appointment(args, telegram_id, calendar_service)
+            elif name == "list_appointments":
+                return ToolExecutor._list_appointments(args, calendar_service)
+            elif name == "update_appointment":
+                return await ToolExecutor._update_appointment(args, calendar_service)
+            elif name == "delete_appointment":
+                return await ToolExecutor._delete_appointment(args, calendar_service)
+            
+            return {"status": "error", "message": f"Herramienta '{name}' no reconocida."}
+        except Exception as e:
+            logger.error(f"Error ejecutando ferramenta {name}: {e}")
+            return {"status": "error", "message": str(e)}
+
+    @staticmethod
+    async def _create_appointment(args, telegram_id, calendar_service):
+        start_dt = datetime.fromisoformat(args['start_time'].replace('Z', '+00:00'))
+        end_dt = None
+        if 'end_time' in args:
+            end_dt = datetime.fromisoformat(args['end_time'].replace('Z', '+00:00'))
+        
+        user_email = args.get('user_email')
+        event = calendar_service.create_event(args['summary'], start_dt, end_dt, user_email=user_email)
+        
+        # Guardar en DB para seguimiento
+        db = SessionLocal()
+        try:
+            new_appt = Appointment(
+                telegram_id=telegram_id,
+                event_id=event['id'],
+                title=args['summary'],
+                start_time=start_dt.replace(tzinfo=None),
+                end_time=(end_dt or (start_dt + timedelta(hours=1))).replace(tzinfo=None)
+            )
+            db.add(new_appt)
+            db.commit()
+        finally:
+            db.close()
+            
+        return {"status": "success", "event_id": event['id'], "user_email": user_email}
+
+    @staticmethod
+    def _list_appointments(args, calendar_service):
+        events = calendar_service.list_events(args.get('time_min'))
+        return [{"id": e['id'], "summary": e['summary'], "start": e['start']} for e in events]
+
+    @staticmethod
+    async def _update_appointment(args, calendar_service):
+        start_dt = None
+        if 'start_time' in args:
+            start_dt = datetime.fromisoformat(args['start_time'].replace('Z', '+00:00'))
+        
+        event = calendar_service.update_event(args['event_id'], summary=args.get('summary'), start_time=start_dt)
+        
+        # Actualizar DB
+        db = SessionLocal()
+        try:
+            appt = db.query(Appointment).filter(Appointment.event_id == args['event_id']).first()
+            if appt:
+                if 'summary' in args: appt.title = args['summary']
+                if start_dt: appt.start_time = start_dt.replace(tzinfo=None)
+                db.commit()
+        finally:
+            db.close()
+            
+        return {"status": "success", "event_id": event['id']}
+
+    @staticmethod
+    async def _delete_appointment(args, calendar_service):
+        calendar_service.delete_event(args['event_id'])
+        db = SessionLocal()
+        try:
+            db.query(Appointment).filter(Appointment.event_id == args['event_id']).delete()
+            db.commit()
+        finally:
+            db.close()
+        return {"status": "success"}
