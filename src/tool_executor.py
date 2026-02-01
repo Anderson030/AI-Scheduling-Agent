@@ -180,16 +180,9 @@ class ToolExecutor:
             return {"status": "success", "message": f"Correo enviado a {to_str}"}
         except Exception as e:
             error_msg = str(e)
-            if "Insufficient Permission" in error_msg or "403" in error_msg:
-                return {
-                    "status": "error",
-                    "message": "Faltan permisos para enviar correos. Debes usar /conectar de nuevo y autorizar el envío de correos."
-                }
-            elif "API has not been used" in error_msg or "disabled" in error_msg:
-                return {
-                    "status": "error",
-                    "message": "La API de Gmail no está habilitada en la consola de Google Cloud. Por favor, asegúrate de habilitar 'Gmail API' en el proyecto de Google."
-                }
-            
             logger.error(f"Error en _send_email: {e}")
-            return {"status": "error", "message": f"Error de configuración en Gmail: {error_msg}"}
+            # Reportar el error crudo para depuración del usuario
+            return {
+                "status": "error", 
+                "message": f"ERROR REAL DE GOOGLE: {error_msg}. Si dice 'Insufficient Permission', por favor usa /conectar de nuevo."
+            }
