@@ -33,6 +33,11 @@ class TelegramBot:
             parse_mode="Markdown"
         )
 
+    async def reset_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = str(update.effective_user.id)
+        HistoryManager.delete_user_history(user_id)
+        await update.message.reply_text("Historial de conversación reiniciado. ¡Empecemos de cero!")
+
     async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             user_id = str(update.effective_user.id)

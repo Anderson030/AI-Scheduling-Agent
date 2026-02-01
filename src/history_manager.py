@@ -75,3 +75,13 @@ class HistoryManager:
             db.commit()
         finally:
             db.close()
+
+    @staticmethod
+    def delete_user_history(user_id: str):
+        """Elimina todo el historial de un usuario"""
+        db = SessionLocal()
+        try:
+            db.query(ConversationHistory).filter(ConversationHistory.telegram_id == user_id).delete()
+            db.commit()
+        finally:
+            db.close()
