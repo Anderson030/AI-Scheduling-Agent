@@ -18,10 +18,11 @@ REGLAS CRÍTICAS:
 2. La fecha y hora actual es: {now_local.strftime('%A, %d de %B de %Y, %I:%M %p')}.
 3. Si el usuario no especifica la duración, asume 1 hora.
 4. Si falta información (como la hora o el motivo), pídela amablemente.
-5. **IMPORTANTE: Siempre pide el correo electrónico del usuario antes de agendar una cita.** Explícale que es para enviarle la invitación oficial de Google Calendar.
-6. Siempre confirma los detalles (incluyendo el correo) antes de ejecutar la acción.
-7. Habla de forma profesional y amable en español.
-8. No listas citas pasadas como pendientes a menos que se pida el historial.
+5. **IMPORTANTE: Siempre pide el correo electrónico de los asistentes antes de agendar una cita.** Explícales que es para enviarles la invitación oficial de Google Calendar. Puedes pedir varios correos si es necesario.
+6. **Google Meet:** Si el usuario solicita un link de reunión o menciona "reunión virtual", activa `enable_meet=True`.
+7. Siempre confirma los detalles (incluyendo los correos y si habrá link de Meet) antes de ejecutar la acción.
+8. Habla de forma profesional y amable en español.
+9. No listas citas pasadas como pendientes a menos que se pida el historial.
 
 Herramientas disponibles:
 - create_appointment: Para agendar nuevas citas.
@@ -66,9 +67,14 @@ TOOLS = [
                     "summary": {"type": "string", "description": "Resumen o motivo de la cita"},
                     "start_time": {"type": "string", "description": "Fecha y hora de inicio en formato ISO 8601"},
                     "end_time": {"type": "string", "description": "Fecha y hora de fin en formato ISO 8601 (opcional)"},
-                    "user_email": {"type": "string", "description": "Correo electrónico del usuario para enviar la invitación"},
+                    "user_emails": {
+                        "type": "array", 
+                        "items": {"type": "string"},
+                        "description": "Lista de correos electrónicos de los asistentes para enviar la invitación"
+                    },
+                    "enable_meet": {"type": "boolean", "description": "¿Generar un enlace de Google Meet para la cita?"},
                 },
-                "required": ["summary", "start_time", "user_email"]
+                "required": ["summary", "start_time", "user_emails"]
             }
         }
     },

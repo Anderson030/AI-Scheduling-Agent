@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta, timezone
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -21,7 +22,7 @@ class CalendarService:
         
         self.timezone = TIMEZONE_STR
 
-    def create_event(self, summary, start_time: datetime, end_time: datetime = None, description="", user_email=None):
+    def create_event(self, summary, start_time: datetime, end_time: datetime = None, description="", user_emails=None, enable_meet=False):
         try:
             if not end_time:
                 end_time = start_time + timedelta(hours=1)
@@ -45,14 +46,25 @@ class CalendarService:
                 },
             }
 
-            if user_email:
-                event['attendees'] = [{'email': user_email}]
+            if user_emails:
+                if isinstance(user_emails, str):
+                    user_emails = [user_emails]
+                event['attendees'] = [{'email': email.strip()} for email in user_emails]
+
+            if enable_meet:
+                event['conferenceData'] = {
+                    'createRequest': {
+                        'requestId': str(uuid.uuid4()),
+                        'conferenceSolutionKey': {'type': 'hangoutsMeet'}
+                    }
+                }
 
             logger.info(f"Insertando evento en calendario {self.calendar_id}: {summary}")
             event = self.service.events().insert(
                 calendarId=self.calendar_id, 
                 body=event,
-                sendUpdates='all' 
+                sendUpdates='all',
+                conferenceDataVersion=1 if enable_meet else 0
             ).execute()
             return event
         except Exception as e:

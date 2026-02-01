@@ -42,8 +42,20 @@ class ToolExecutor:
             else:
                 end_dt = end_dt.astimezone(timezone.utc)
         
-        user_email = args.get('user_email')
-        event = calendar_service.create_event(args['summary'], start_dt, end_dt, user_email=user_email)
+        user_emails = args.get('user_emails', [])
+        # Soporte para el campo antiguo por si acaso la IA se confunde al principio
+        if not user_emails and 'user_email' in args:
+            user_emails = [args['user_email']]
+            
+        enable_meet = args.get('enable_meet', False)
+        
+        event = calendar_service.create_event(
+            args['summary'], 
+            start_dt, 
+            end_dt, 
+            user_emails=user_emails, 
+            enable_meet=enable_meet
+        )
         
         # Guardar en DB para seguimiento
         db = SessionLocal()
@@ -60,7 +72,13 @@ class ToolExecutor:
         finally:
             db.close()
             
-        return {"status": "success", "event_id": event['id'], "user_email": user_email}
+        meet_link = event.get('hangoutLink')
+        return {
+            "status": "success", 
+            "event_id": event['id'], 
+            "user_emails": user_emails,
+            "meet_link": meet_link
+        }
 
     @staticmethod
     def _list_appointments(args, calendar_service):
