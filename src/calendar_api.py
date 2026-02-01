@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 import pytz
@@ -26,6 +26,12 @@ class CalendarService:
             if not end_time:
                 end_time = start_time + timedelta(hours=1)
             
+            # Asegurar que son aware (si no vienen con zona, asumimos UTC)
+            if start_time.tzinfo is None:
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            if end_time.tzinfo is None:
+                end_time = end_time.replace(tzinfo=timezone.utc)
+
             event = {
                 'summary': summary,
                 'description': description,
@@ -56,7 +62,7 @@ class CalendarService:
     def list_events(self, time_min=None, max_results=10):
         try:
             if not time_min:
-                time_min = datetime.utcnow().isoformat() + 'Z'
+                time_min = datetime.now(timezone.utc).isoformat()
             
             logger.info(f"Listando eventos en calendario {self.calendar_id} desde {time_min}")
             events_result = self.service.events().list(
@@ -76,12 +82,17 @@ class CalendarService:
             if summary:
                 event['summary'] = summary
             if start_time:
+                if start_time.tzinfo is None:
+                    start_time = start_time.replace(tzinfo=timezone.utc)
                 event['start']['dateTime'] = start_time.isoformat()
+                
+                if not end_time:
+                    end_time = start_time + timedelta(hours=1)
+            
             if end_time:
+                if end_time.tzinfo is None:
+                    end_time = end_time.replace(tzinfo=timezone.utc)
                 event['end']['dateTime'] = end_time.isoformat()
-            elif start_time and not end_time:
-                new_end = start_time + timedelta(hours=1)
-                event['end']['dateTime'] = new_end.isoformat()
 
             logger.info(f"Actualizando evento {event_id} en calendario {self.calendar_id}")
             updated_event = self.service.events().update(calendarId=self.calendar_id, eventId=event_id, body=event).execute()

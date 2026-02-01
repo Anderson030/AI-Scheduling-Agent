@@ -31,10 +31,10 @@ Herramientas disponibles:
 """
 
 
-#Define qué modelo usar.
+#Defino la clase AIService que va a manejar todo lo relacionado con OpenAI
 class AIService:
     def __init__(self): 
-        self.model = "gpt-4o"
+        self.model = "gpt-4o" 
 
     def transcribe_audio(self, audio_file_path):
         with open(audio_file_path, "rb") as audio_file:
@@ -53,7 +53,7 @@ class AIService:
         )
         return response.choices[0].message
 
-# Definición de herramientas para OpenAI
+#Defino las herramientas que voy a usar para OpenAI
 TOOLS = [
     {
         "type": "function",

@@ -1,6 +1,6 @@
 import logging
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from src.database import SessionLocal, Appointment
 from src.calendar_api import CalendarService
 
@@ -28,9 +28,19 @@ class ToolExecutor:
     @staticmethod
     async def _create_appointment(args, telegram_id, calendar_service):
         start_dt = datetime.fromisoformat(args['start_time'].replace('Z', '+00:00'))
+        if start_dt.tzinfo is None:
+            # Si viene sin zona horaria, asumimos UTC por el formato ISO de la IA
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+        else:
+            start_dt = start_dt.astimezone(timezone.utc)
+
         end_dt = None
         if 'end_time' in args:
             end_dt = datetime.fromisoformat(args['end_time'].replace('Z', '+00:00'))
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            else:
+                end_dt = end_dt.astimezone(timezone.utc)
         
         user_email = args.get('user_email')
         event = calendar_service.create_event(args['summary'], start_dt, end_dt, user_email=user_email)
@@ -42,8 +52,8 @@ class ToolExecutor:
                 telegram_id=telegram_id,
                 event_id=event['id'],
                 title=args['summary'],
-                start_time=start_dt.replace(tzinfo=None),
-                end_time=(end_dt or (start_dt + timedelta(hours=1))).replace(tzinfo=None)
+                start_time=start_dt.replace(tzinfo=None), # Guardamos como naive UTC
+                end_time=(end_dt or (start_dt + timedelta(hours=1))).replace(tzinfo=None) # Guardamos como naive UTC
             )
             db.add(new_appt)
             db.commit()
@@ -71,7 +81,13 @@ class ToolExecutor:
             appt = db.query(Appointment).filter(Appointment.event_id == args['event_id']).first()
             if appt:
                 if 'summary' in args: appt.title = args['summary']
-                if start_dt: appt.start_time = start_dt.replace(tzinfo=None)
+                if start_dt: 
+                    # Asegurar UTC antes de guardar
+                    if start_dt.tzinfo is None:
+                        start_dt = start_dt.replace(tzinfo=timezone.utc)
+                    else:
+                        start_dt = start_dt.astimezone(timezone.utc)
+                    appt.start_time = start_dt.replace(tzinfo=None)
                 db.commit()
         finally:
             db.close()
