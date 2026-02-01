@@ -159,6 +159,12 @@ class ToolExecutor:
 
     @staticmethod
     async def _send_email(args, gmail_service):
+        if not gmail_service:
+            return {
+                "status": "error", 
+                "message": "No has vinculado tu cuenta de Gmail o faltan permisos. Por favor, usa el comando /conectar para actualizar los permisos de envío de correos."
+            }
+
         try:
             to_list = args.get('to')
             if isinstance(to_list, list):
@@ -173,5 +179,17 @@ class ToolExecutor:
             )
             return {"status": "success", "message": f"Correo enviado a {to_str}"}
         except Exception as e:
+            error_msg = str(e)
+            if "Insufficient Permission" in error_msg or "403" in error_msg:
+                return {
+                    "status": "error",
+                    "message": "Faltan permisos para enviar correos. Debes usar /conectar de nuevo y autorizar el envío de correos."
+                }
+            elif "API has not been used" in error_msg or "disabled" in error_msg:
+                return {
+                    "status": "error",
+                    "message": "La API de Gmail no está habilitada en la consola de Google Cloud. Por favor, asegúrate de habilitar 'Gmail API' en el proyecto de Google."
+                }
+            
             logger.error(f"Error en _send_email: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": f"Error de configuración en Gmail: {error_msg}"}
