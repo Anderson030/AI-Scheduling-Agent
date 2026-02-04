@@ -46,7 +46,7 @@ class SchedulerService:
                 else:
                     day_str = f"el {start_local.strftime('%d/%m')}"
 
-                message_template = f"Recordatorio: Tienes una cita '{appt.title}' {day_str} a las {time_str}. recuerda estar 10 minutos antes ¿Quieres que te envie el link del meet?"
+                message_template = f"🔔 Recordatorio: Tienes una cita '{appt.title}' {day_str} a las {time_str}. Recuerda estar 10 minutos antes. 🗓️ ¿Quieres que te envíe el link del meet?"
                 
                 message = None
                 field_to_mark = None
