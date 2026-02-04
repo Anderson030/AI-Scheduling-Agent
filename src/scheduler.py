@@ -34,28 +34,39 @@ class SchedulerService:
                 # Convertir a zona horaria local para el mensaje
                 from src.config import TIMEZONE
                 start_local = start_utc.astimezone(TIMEZONE)
+                now_local = datetime.now(TIMEZONE)
+                
                 time_str = start_local.strftime('%H:%M')
+                
+                # Determinar si es hoy o mañana localmente
+                if start_local.date() == now_local.date():
+                    day_str = "hoy"
+                elif start_local.date() == (now_local + timedelta(days=1)).date():
+                    day_str = "mañana"
+                else:
+                    day_str = f"el {start_local.strftime('%d/%m')}"
+
+                message_template = f"Recordatorio: Tienes una cita '{appt.title}' {day_str} a las {time_str}. recuerda estar 10 minutos antes ¿Quieres que te envie el link del meet?"
                 
                 message = None
                 field_to_mark = None
                 
                 # Lógica de ventanas no solapadas
-                # Priorizamos el más inminente que no haya sido enviado
                 if diff <= timedelta(minutes=15):
                     if not appt.rem_15m_sent:
-                        message = f"Recordatorio: Tienes una cita '{appt.title}' a las {time_str}. recuerda estar 10 minutos antes ¿Quieres que te envie el link del meet?"
+                        message = message_template
                         field_to_mark = "rem_15m_sent"
                 elif diff <= timedelta(hours=1):
                     if not appt.rem_1h_sent:
-                        message = f"Recordatorio: Tienes una cita '{appt.title}' a las {time_str}. recuerda estar 10 minutos antes ¿Quieres que te envie el link del meet?"
+                        message = message_template
                         field_to_mark = "rem_1h_sent"
                 elif diff <= timedelta(hours=3):
                     if not appt.rem_3h_sent:
-                        message = f"Recordatorio: Tienes una cita '{appt.title}' a las {time_str}. recuerda estar 10 minutos antes ¿Quieres que te envie el link del meet?"
+                        message = message_template
                         field_to_mark = "rem_3h_sent"
                 elif diff <= timedelta(hours=24):
                     if not appt.rem_24h_sent:
-                        message = f"Recordatorio: Tienes una cita '{appt.title}' a las {time_str}. recuerda estar 10 minutos antes ¿Quieres que te envie el link del meet?"
+                        message = message_template
                         field_to_mark = "rem_24h_sent"
 
                 if message and field_to_mark:
