@@ -109,7 +109,7 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Error en message_handler: {e}")
             logger.error(traceback.format_exc())
-            await update.message.reply_text("Lo siento, tuve un problema interno. Inténtalo de nuevo.")
+            await update.message.reply_text(f"⚠️ Error interno: {type(e).__name__}: {str(e)[:300]}")
 
     def send_message(self, chat_id, text):
         # Implementado mediante inyección en main.py (context.bot.send_message)
