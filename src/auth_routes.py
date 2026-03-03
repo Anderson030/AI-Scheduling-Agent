@@ -31,11 +31,14 @@ async def get_auth_url(telegram_id: str):
         ]
     )
     flow.redirect_uri = f"{WEBHOOK_URL}/auth/callback"
+    # code_challenge_method=False disables PKCE so no code_verifier is required
+    # at callback time (stateless server cannot persist the verifier between requests)
     authorization_url, state = flow.authorization_url(
         access_type='offline',
         prompt='consent',
         include_granted_scopes='true',
-        state=telegram_id
+        state=telegram_id,
+        code_challenge_method=False
     )
     return RedirectResponse(authorization_url)
 
