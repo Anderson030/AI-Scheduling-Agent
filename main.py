@@ -37,9 +37,15 @@ async def startup_event():
     await application.initialize()
     
     if WEBHOOK_URL:
-        await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
-        logger.info(f"Modo WEBHOOK: Configurado en {WEBHOOK_URL}/webhook")
-        await application.start()
+        try:
+            await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+            logger.info(f"Modo WEBHOOK: Configurado en {WEBHOOK_URL}/webhook")
+            await application.start()
+        except Exception as e:
+            logger.error(f"Error configurando webhook ({WEBHOOK_URL}/webhook): {e}")
+            logger.info("Fallback a POLLING...")
+            await application.start()
+            asyncio.create_task(application.updater.start_polling())
     else:
         logger.info("Modo POLLING: Iniciando...")
         await application.start()
