@@ -64,8 +64,12 @@ async def auth_callback(request: Request):
         tokens = response.json()
 
         if response.status_code != 200:
-            logger.error(f"Error en intercambio de tokens: {tokens}")
-            return {"status": "error", "message": "Google rechazó las credenciales."}
+            error_detail = tokens.get('error', 'unknown')
+            error_desc = tokens.get('error_description', 'sin descripción')
+            logger.error(f"Error en intercambio de tokens: {error_detail} - {error_desc}")
+            logger.error(f"redirect_uri usado: {redirect_uri}")
+            logger.error(f"client_id usado: {GOOGLE_CLIENT_ID[:20]}...")
+            return {"status": "error", "message": f"Google error: {error_detail} - {error_desc}"}
 
         access_token = tokens.get('access_token')
         refresh_token = tokens.get('refresh_token')
