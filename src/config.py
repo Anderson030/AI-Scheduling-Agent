@@ -15,7 +15,7 @@ def clean_env_var(val):
 OPENAI_API_KEY = clean_env_var(os.getenv("OPENAI_API_KEY"))
 TELEGRAM_BOT_TOKEN = clean_env_var(os.getenv("TELEGRAM_BOT_TOKEN"))
 RAW_WEBHOOK_URL = os.getenv("WEBHOOK_URL")
-WEBHOOK_URL = RAW_WEBHOOK_URL.rstrip('/') if RAW_WEBHOOK_URL else None
+WEBHOOK_URL = RAW_WEBHOOK_URL.strip().rstrip('/') if RAW_WEBHOOK_URL else None
 
 # Google Calendar
 GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
