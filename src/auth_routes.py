@@ -1,7 +1,7 @@
 import logging
+import urllib.parse
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
-import google_auth_oauthlib.flow
 from datetime import datetime, timedelta
 import requests
 from src.config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, WEBHOOK_URL
@@ -15,31 +15,21 @@ async def get_auth_url(telegram_id: str):
     """Genera la URL de autorización para un usuario de Telegram específico"""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
         return {"error": "GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET no están configurados"}
-        
-    flow = google_auth_oauthlib.flow.Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-        },
-        scopes=[
-            'https://www.googleapis.com/auth/calendar',
-            'https://www.googleapis.com/auth/gmail.send'
-        ]
-    )
-    flow.redirect_uri = f"{WEBHOOK_URL}/auth/callback"
-    # code_challenge_method=False disables PKCE so no code_verifier is required
-    # at callback time (stateless server cannot persist the verifier between requests)
-    authorization_url, state = flow.authorization_url(
-        access_type='offline',
-        prompt='consent',
-        include_granted_scopes='true',
-        state=telegram_id,
-        code_challenge_method=False
-    )
+
+    # Build the URL manually to avoid any PKCE injection by google_auth_oauthlib.
+    # A stateless server cannot persist the code_verifier between requests, so
+    # we intentionally omit PKCE — no code_challenge sent means no code_verifier needed.
+    params = {
+        'client_id': GOOGLE_CLIENT_ID,
+        'redirect_uri': f"{WEBHOOK_URL}/auth/callback",
+        'response_type': 'code',
+        'scope': 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.send',
+        'access_type': 'offline',
+        'prompt': 'consent',
+        'include_granted_scopes': 'true',
+        'state': telegram_id,
+    }
+    authorization_url = 'https://accounts.google.com/o/oauth2/v2/auth?' + urllib.parse.urlencode(params)
     return RedirectResponse(authorization_url)
 
 @router.get("/auth/callback")
