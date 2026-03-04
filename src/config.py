@@ -12,7 +12,7 @@ def clean_env_var(val):
     return re.sub(r'[\s\t\n\r"\' ]', '', val).strip()
 
 # API Keys
-ANTHROPIC_API_KEY = clean_env_var(os.getenv("ANTHROPIC_API_KEY"))
+GEMINI_API_KEY = clean_env_var(os.getenv("GEMINI_API_KEY"))
 OPENAI_API_KEY = clean_env_var(os.getenv("OPENAI_API_KEY"))  # Optional: only used for Whisper audio transcription
 TELEGRAM_BOT_TOKEN = clean_env_var(os.getenv("TELEGRAM_BOT_TOKEN"))
 RAW_WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -31,7 +31,7 @@ TIMEZONE = pytz.timezone(TIMEZONE_STR)
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./appointments.db")
 
 # Validation
-if not ANTHROPIC_API_KEY:
-    print("Warning: ANTHROPIC_API_KEY not found in environment variables.")
+if not GEMINI_API_KEY:
+    print("Warning: GEMINI_API_KEY not found in environment variables.")
 if not TELEGRAM_BOT_TOKEN:
     print("Warning: TELEGRAM_BOT_TOKEN not found in environment variables.")

@@ -1,7 +1,7 @@
 fastapi
 uvicorn
 python-telegram-bot
-anthropic
+google-generativeai
 openai
 google-api-python-client
 google-auth-httplib2

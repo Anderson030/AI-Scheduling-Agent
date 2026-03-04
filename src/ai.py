@@ -1,20 +1,12 @@
 import json
 import logging
-import anthropic
+import google.generativeai as genai
 from datetime import datetime
-from src.config import ANTHROPIC_API_KEY, OPENAI_API_KEY, TIMEZONE_STR, TIMEZONE
+from src.config import GEMINI_API_KEY, OPENAI_API_KEY, TIMEZONE_STR, TIMEZONE
 
 logger = logging.getLogger(__name__)
 
-# Anthropic client (primary)
-anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-# OpenAI client (optional — only for Whisper audio transcription)
-try:
-    import openai as _openai
-    _openai_client = _openai.OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
-except Exception:
-    _openai_client = None
+genai.configure(api_key=GEMINI_API_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -34,14 +26,14 @@ REGLAS CRÍTICAS:
 3. Si el usuario no especifica la duración, asume 1 hora.
 4. Si falta información (como la hora o el motivo), pídela amablemente.
 5. **IMPORTANTE: Siempre pide el correo electrónico de los asistentes antes de agendar un evento.** Explícales que es para enviarles la invitación oficial de Google Calendar.
-6. **Google Meet:** Si el usuario solicita un link de reunión o menciona "reunión virtual", activa `enable_meet=True`.
+6. **Google Meet:** Si el usuario solicita un link de reunión o menciona "reunión virtual", activa enable_meet=True.
 7. Siempre confirma los detalles (correos y Meet) antes de ejecutar la acción.
 8. **DETECCIÓN DE IDIOMA:** Detecta el idioma del usuario y responde siempre en el mismo idioma (principalmente español o inglés). Mantén un tono profesional y amable en cualquier idioma.
 9. **Estilo Personalizado (Emojis):** Usa emojis sutiles para resaltar información importante (máximo 2 por mensaje).
     - Usa ✅ para confirmaciones exitosas.
     - Usa ℹ️ o ⚠️ para advertencias o información crítica.
     - Usa 👋 o 🗓️ para saludos y referencias al calendario.
-10. No listas eventos pasados como pendientes a menos que se pida el historial.
+10. No listes eventos pasados como pendientes a menos que se pida el historial.
 
 Herramientas disponibles:
 - create_appointment: Para agendar nuevos eventos.
@@ -52,38 +44,38 @@ Herramientas disponibles:
 - send_email: Para redactar y enviar correos electrónicos.
 
 REGLAS DE CORREO ELECTRÓNICO:
-1. **Redacción Inteligente:** Propón una redacción elegante en el idioma en que te estés comunicando con el usuario.
-2. **Previsualización OBLIGATORIA:** Muestra el Asunto y el Cuerpo antes de enviar y pide confirmación.
-3. **Confirmación explícita:** No uses `send_email` hasta que el usuario confirme tras ver la previsualización.
+1. Propón una redacción elegante en el idioma en que te estés comunicando con el usuario.
+2. Muestra el Asunto y el Cuerpo antes de enviar y pide confirmación.
+3. No uses send_email hasta que el usuario confirme tras ver la previsualización.
 """
 
 
 # ---------------------------------------------------------------------------
-# Format converters: OpenAI ↔ Anthropic
+# Format converters: OpenAI history → Gemini format
 # ---------------------------------------------------------------------------
 
-def _convert_tools_to_anthropic(openai_tools):
-    """Convert OpenAI-style tool definitions to Anthropic format."""
-    result = []
+def _convert_tools_for_gemini(openai_tools):
+    """Convert OpenAI-style tool definitions to Gemini format."""
+    function_declarations = []
     for t in openai_tools:
         fn = t["function"]
-        result.append({
+        function_declarations.append({
             "name": fn["name"],
             "description": fn.get("description", ""),
-            "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+            "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
         })
-    return result
+    return [{"function_declarations": function_declarations}]
 
 
-def _convert_messages_to_anthropic(openai_messages):
+def _convert_messages_to_gemini(openai_messages):
     """
-    Convert a list of OpenAI-format messages to Anthropic format.
+    Convert OpenAI-format message list to Gemini format.
 
-    Key differences:
-    - Anthropic: system prompt is separate (not in messages list)
-    - Anthropic: tool results go as 'user' role, not 'tool' role
-    - Anthropic: consecutive tool results must be grouped into one user message
-    - Anthropic: assistant tool-use content is a list of blocks, not tool_calls
+    Gemini differences:
+    - 'assistant' role → 'model'
+    - tool_calls in assistant message → function_call parts
+    - tool results → function_response parts grouped in a 'user' message
+    - Must start with a 'user' message
     """
     result = []
     i = 0
@@ -94,72 +86,70 @@ def _convert_messages_to_anthropic(openai_messages):
 
         if role == "user":
             content = msg.get("content") or ""
-            result.append({"role": "user", "content": content})
+            result.append({"role": "user", "parts": [content]})
             i += 1
 
         elif role == "assistant":
             tool_calls = msg.get("tool_calls")
             if tool_calls:
-                # Build assistant content block list
-                content_blocks = []
+                parts = []
                 text = msg.get("content")
                 if text:
-                    content_blocks.append({"type": "text", "text": text})
+                    parts.append(text)
 
                 for tc in tool_calls:
                     if isinstance(tc, dict):
-                        tc_id = tc.get("id", "")
-                        fn = tc.get("function", {})
-                        name = fn.get("name", "")
-                        arguments = fn.get("arguments", "{}")
+                        name = tc["function"]["name"]
+                        arguments = tc["function"]["arguments"]
                     else:
-                        tc_id = tc.id
                         name = tc.function.name
                         arguments = tc.function.arguments
 
                     try:
-                        input_data = json.loads(arguments) if isinstance(arguments, str) else arguments
+                        args = json.loads(arguments) if isinstance(arguments, str) else arguments
                     except Exception:
-                        input_data = {}
+                        args = {}
 
-                    content_blocks.append({
-                        "type": "tool_use",
-                        "id": tc_id,
-                        "name": name,
-                        "input": input_data,
-                    })
+                    parts.append({"function_call": {"name": name, "args": args}})
 
-                result.append({"role": "assistant", "content": content_blocks})
+                result.append({"role": "model", "parts": parts})
 
-                # Collect all consecutive tool results and group into one user message
-                tool_result_blocks = []
+                # Collect all consecutive tool results → one user message
+                tool_result_parts = []
                 j = i + 1
                 while j < len(openai_messages) and openai_messages[j].get("role") == "tool":
                     tr = openai_messages[j]
-                    tool_result_blocks.append({
-                        "type": "tool_result",
-                        "tool_use_id": tr.get("tool_call_id", ""),
-                        "content": tr.get("content") or "",
+                    content_str = tr.get("content") or ""
+                    try:
+                        content_val = json.loads(content_str)
+                    except Exception:
+                        content_val = {"result": content_str}
+
+                    tool_result_parts.append({
+                        "function_response": {
+                            "name": tr.get("name", "unknown"),
+                            "response": content_val,
+                        }
                     })
                     j += 1
 
-                if tool_result_blocks:
-                    result.append({"role": "user", "content": tool_result_blocks})
+                if tool_result_parts:
+                    result.append({"role": "user", "parts": tool_result_parts})
                     i = j
                 else:
                     i += 1
             else:
                 content = msg.get("content") or ""
-                result.append({"role": "assistant", "content": content})
+                result.append({"role": "model", "parts": [content]})
                 i += 1
 
         elif role == "tool":
-            # Orphaned tool message — skip (shouldn't happen in well-formed history)
+            # Orphaned tool message — skip
             i += 1
         else:
             i += 1
 
-    # Anthropic requires the first message to be 'user'
+    # Gemini requires the first message to be 'user'
     while result and result[0]["role"] != "user":
         result.pop(0)
 
@@ -167,13 +157,13 @@ def _convert_messages_to_anthropic(openai_messages):
 
 
 # ---------------------------------------------------------------------------
-# Adapter stubs (keep bot.py unchanged)
+# Adapter stubs (keeps bot.py unchanged)
 # ---------------------------------------------------------------------------
 
 class _FunctionStub:
     def __init__(self, name: str, arguments: str):
         self.name = name
-        self.arguments = arguments  # JSON string, matching OpenAI API
+        self.arguments = arguments  # JSON string
 
 
 class _ToolCallStub:
@@ -183,11 +173,11 @@ class _ToolCallStub:
 
 
 class _MessageStub:
-    """Makes Anthropic response look identical to openai.types.chat.ChatCompletionMessage."""
+    """Makes Gemini response look identical to an OpenAI ChatCompletionMessage."""
 
     def __init__(self, content: str, tool_calls=None):
         self.content = content
-        self.tool_calls = tool_calls  # list of _ToolCallStub or None
+        self.tool_calls = tool_calls
 
     def model_dump(self):
         if self.tool_calls:
@@ -215,46 +205,52 @@ class _MessageStub:
 
 class AIService:
     def __init__(self):
-        self.model = "claude-3-5-sonnet-20241022"
+        self.model_name = "gemini-2.0-flash"
 
     def transcribe_audio(self, audio_file_path: str) -> str:
-        if not _openai_client:
-            return "No se pudo transcribir el audio (servicio de transcripción no disponible)."
-        with open(audio_file_path, "rb") as f:
-            transcript = _openai_client.audio.transcriptions.create(model="whisper-1", file=f)
-        return transcript.text
+        """Optional: uses OpenAI Whisper if key is available."""
+        try:
+            import openai
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            with open(audio_file_path, "rb") as f:
+                transcript = client.audio.transcriptions.create(model="whisper-1", file=f)
+            return transcript.text
+        except Exception as e:
+            logger.warning(f"Audio transcription unavailable: {e}")
+            return "No se pudo transcribir el audio (servicio no disponible)."
 
     def get_agent_response(self, messages: list, tools: list) -> _MessageStub:
-        anthropic_tools = _convert_tools_to_anthropic(tools)
-        anthropic_messages = _convert_messages_to_anthropic(messages)
+        gemini_tools = _convert_tools_for_gemini(tools)
+        gemini_messages = _convert_messages_to_gemini(messages)
 
-        if not anthropic_messages:
+        if not gemini_messages:
             return _MessageStub("No recibí ningún mensaje.")
 
-        response = anthropic_client.messages.create(
-            model=self.model,
-            max_tokens=4096,
-            system=get_system_prompt(),
-            messages=anthropic_messages,
-            tools=anthropic_tools,
+        model = genai.GenerativeModel(
+            model_name=self.model_name,
+            system_instruction=get_system_prompt(),
+            tools=gemini_tools,
         )
+
+        response = model.generate_content(gemini_messages)
 
         text_content = ""
         tool_calls = []
 
-        for block in response.content:
-            if block.type == "text":
-                text_content = block.text
-            elif block.type == "tool_use":
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, "text") and part.text:
+                text_content += part.text
+            elif hasattr(part, "function_call") and part.function_call.name:
+                fc = part.function_call
                 tool_calls.append(
                     _ToolCallStub(
-                        id=block.id,
-                        name=block.name,
-                        arguments=json.dumps(block.input),
+                        id=f"call_{fc.name}_{len(tool_calls)}",
+                        name=fc.name,
+                        arguments=json.dumps(dict(fc.args)),
                     )
                 )
 
-        logger.info(f"Claude response — stop_reason: {response.stop_reason}, tools: {len(tool_calls)}")
+        logger.info(f"Gemini response — tool_calls: {len(tool_calls)}, text_len: {len(text_content)}")
         return _MessageStub(
             content=text_content,
             tool_calls=tool_calls if tool_calls else None,
@@ -262,7 +258,7 @@ class AIService:
 
 
 # ---------------------------------------------------------------------------
-# TOOLS definition (OpenAI format — converted to Anthropic format on call)
+# TOOLS (OpenAI format — converted to Gemini format on each call)
 # ---------------------------------------------------------------------------
 
 TOOLS = [
