@@ -13,7 +13,6 @@ def clean_env_var(val):
 
 # API Keys
 GEMINI_API_KEY = clean_env_var(os.getenv("GEMINI_API_KEY"))
-OPENAI_API_KEY = clean_env_var(os.getenv("OPENAI_API_KEY"))  # Optional: only used for Whisper audio transcription
 TELEGRAM_BOT_TOKEN = clean_env_var(os.getenv("TELEGRAM_BOT_TOKEN"))
 RAW_WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WEBHOOK_URL = RAW_WEBHOOK_URL.strip().rstrip('/') if RAW_WEBHOOK_URL else None

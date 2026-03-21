@@ -1,12 +1,14 @@
 import json
 import logging
-import google.generativeai as genai
+import pathlib
+from google import genai
+from google.genai import types
 from datetime import datetime
-from src.config import GEMINI_API_KEY, OPENAI_API_KEY, TIMEZONE_STR, TIMEZONE
+from src.config import GEMINI_API_KEY, TIMEZONE_STR, TIMEZONE
 
 logger = logging.getLogger(__name__)
 
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -54,22 +56,25 @@ REGLAS DE CORREO ELECTRÓNICO:
 # Format converters: OpenAI history → Gemini format
 # ---------------------------------------------------------------------------
 
-def _convert_tools_for_gemini(openai_tools):
-    """Convert OpenAI-style tool definitions to Gemini format."""
+def _build_gemini_tools(openai_tools):
+    """Convert OpenAI-style tool definitions to google-genai types.Tool."""
     function_declarations = []
     for t in openai_tools:
         fn = t["function"]
-        function_declarations.append({
-            "name": fn["name"],
-            "description": fn.get("description", ""),
-            "parameters": fn.get("parameters", {"type": "object", "properties": {}}),
-        })
-    return [{"function_declarations": function_declarations}]
+        params = fn.get("parameters", {"type": "object", "properties": {}})
+        function_declarations.append(
+            types.FunctionDeclaration(
+                name=fn["name"],
+                description=fn.get("description", ""),
+                parameters=params,
+            )
+        )
+    return [types.Tool(function_declarations=function_declarations)]
 
 
 def _convert_messages_to_gemini(openai_messages):
     """
-    Convert OpenAI-format message list to Gemini format.
+    Convert OpenAI-format message list to Gemini (google-genai) format.
 
     Gemini differences:
     - 'assistant' role → 'model'
@@ -86,7 +91,7 @@ def _convert_messages_to_gemini(openai_messages):
 
         if role == "user":
             content = msg.get("content") or ""
-            result.append({"role": "user", "parts": [content]})
+            result.append(types.Content(role="user", parts=[types.Part(text=content)]))
             i += 1
 
         elif role == "assistant":
@@ -95,7 +100,7 @@ def _convert_messages_to_gemini(openai_messages):
                 parts = []
                 text = msg.get("content")
                 if text:
-                    parts.append(text)
+                    parts.append(types.Part(text=text))
 
                 for tc in tool_calls:
                     if isinstance(tc, dict):
@@ -110,9 +115,9 @@ def _convert_messages_to_gemini(openai_messages):
                     except Exception:
                         args = {}
 
-                    parts.append({"function_call": {"name": name, "args": args}})
+                    parts.append(types.Part(function_call=types.FunctionCall(name=name, args=args)))
 
-                result.append({"role": "model", "parts": parts})
+                result.append(types.Content(role="model", parts=parts))
 
                 # Collect all consecutive tool results → one user message
                 tool_result_parts = []
@@ -125,22 +130,24 @@ def _convert_messages_to_gemini(openai_messages):
                     except Exception:
                         content_val = {"result": content_str}
 
-                    tool_result_parts.append({
-                        "function_response": {
-                            "name": tr.get("name", "unknown"),
-                            "response": content_val,
-                        }
-                    })
+                    tool_result_parts.append(
+                        types.Part(
+                            function_response=types.FunctionResponse(
+                                name=tr.get("name", "unknown"),
+                                response=content_val,
+                            )
+                        )
+                    )
                     j += 1
 
                 if tool_result_parts:
-                    result.append({"role": "user", "parts": tool_result_parts})
+                    result.append(types.Content(role="user", parts=tool_result_parts))
                     i = j
                 else:
                     i += 1
             else:
                 content = msg.get("content") or ""
-                result.append({"role": "model", "parts": [content]})
+                result.append(types.Content(role="model", parts=[types.Part(text=content)]))
                 i += 1
 
         elif role == "tool":
@@ -150,7 +157,7 @@ def _convert_messages_to_gemini(openai_messages):
             i += 1
 
     # Gemini requires the first message to be 'user'
-    while result and result[0]["role"] != "user":
+    while result and result[0].role != "user":
         result.pop(0)
 
     return result
@@ -208,31 +215,38 @@ class AIService:
         self.model_name = "gemini-2.0-flash"
 
     def transcribe_audio(self, audio_file_path: str) -> str:
-        """Optional: uses OpenAI Whisper if key is available."""
+        """Transcribe audio using Gemini multimodal API."""
         try:
-            import openai
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            with open(audio_file_path, "rb") as f:
-                transcript = client.audio.transcriptions.create(model="whisper-1", file=f)
-            return transcript.text
+            audio_bytes = pathlib.Path(audio_file_path).read_bytes()
+            response = client.models.generate_content(
+                model=self.model_name,
+                contents=[
+                    types.Part.from_bytes(data=audio_bytes, mime_type="audio/ogg"),
+                    "Transcribe exactly what is said in this audio. Return only the transcription, no extra commentary.",
+                ],
+            )
+            return response.text.strip()
         except Exception as e:
             logger.warning(f"Audio transcription unavailable: {e}")
             return "No se pudo transcribir el audio (servicio no disponible)."
 
     def get_agent_response(self, messages: list, tools: list) -> _MessageStub:
-        gemini_tools = _convert_tools_for_gemini(tools)
+        gemini_tools = _build_gemini_tools(tools)
         gemini_messages = _convert_messages_to_gemini(messages)
 
         if not gemini_messages:
             return _MessageStub("No recibí ningún mensaje.")
 
-        model = genai.GenerativeModel(
-            model_name=self.model_name,
+        config = types.GenerateContentConfig(
             system_instruction=get_system_prompt(),
             tools=gemini_tools,
         )
 
-        response = model.generate_content(gemini_messages)
+        response = client.models.generate_content(
+            model=self.model_name,
+            contents=gemini_messages,
+            config=config,
+        )
 
         text_content = ""
         tool_calls = []
@@ -240,7 +254,7 @@ class AIService:
         for part in response.candidates[0].content.parts:
             if hasattr(part, "text") and part.text:
                 text_content += part.text
-            elif hasattr(part, "function_call") and part.function_call.name:
+            elif hasattr(part, "function_call") and part.function_call and part.function_call.name:
                 fc = part.function_call
                 tool_calls.append(
                     _ToolCallStub(
