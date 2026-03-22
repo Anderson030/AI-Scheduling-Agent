@@ -127,6 +127,8 @@ def _convert_messages_to_gemini(openai_messages):
                     content_str = tr.get("content") or ""
                     try:
                         content_val = json.loads(content_str)
+                        if not isinstance(content_val, dict):
+                            content_val = {"result": content_val}
                     except Exception:
                         content_val = {"result": content_str}
 
