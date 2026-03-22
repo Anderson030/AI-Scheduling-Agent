@@ -251,7 +251,9 @@ class AIService:
         text_content = ""
         tool_calls = []
 
-        for part in response.candidates[0].content.parts:
+        parts = response.candidates[0].content.parts or []
+
+        for part in parts:
             if hasattr(part, "text") and part.text:
                 text_content += part.text
             elif hasattr(part, "function_call") and part.function_call and part.function_call.name:
