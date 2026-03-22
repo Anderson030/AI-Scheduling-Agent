@@ -260,7 +260,7 @@ class AIService:
                     _ToolCallStub(
                         id=f"call_{fc.name}_{len(tool_calls)}",
                         name=fc.name,
-                        arguments=json.dumps(dict(fc.args)),
+                        arguments=json.dumps(fc.args if fc.args else {}),
                     )
                 )
 
