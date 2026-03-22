@@ -212,7 +212,7 @@ class _MessageStub:
 
 class AIService:
     def __init__(self):
-        self.model_name = "gemini-2.0-flash"
+        self.model_name = "gemini-2.5-flash"
 
     def transcribe_audio(self, audio_file_path: str) -> str:
         """Transcribe audio using Gemini multimodal API."""

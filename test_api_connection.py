@@ -17,7 +17,7 @@ def test_gemini():
     print(f"API Key (first 10 chars): {GEMINI_API_KEY[:10] if GEMINI_API_KEY else 'None'}...")
     try:
         genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         response = model.generate_content("Responde solo 'OK' en una palabra.")
         print(f"Gemini Success: {response.text.strip()}")
         return True
