@@ -89,7 +89,20 @@ class ToolExecutor:
 
     @staticmethod
     def _list_appointments(args, calendar_service):
-        events = calendar_service.list_events(args.get('time_min'))
+        time_min_str = args.get('time_min')
+        parsed_time_min = None
+        if time_min_str:
+            try:
+                dt = datetime.fromisoformat(time_min_str.replace('Z', '+00:00'))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                parsed_time_min = dt.isoformat()
+            except ValueError:
+                # Si falla el parseo, se dejará nulo y calendar_api usará datetime.now
+                logger.warning(f"Formato de fecha inválido de IA para list_appointments: {time_min_str}")
+                parsed_time_min = None
+
+        events = calendar_service.list_events(parsed_time_min)
         return [{"id": e['id'], "summary": e['summary'], "start": e['start']} for e in events]
 
     @staticmethod
